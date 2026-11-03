@@ -1,0 +1,16 @@
+node_modules/
+dist/
+__pycache__/
+.venv/
+venv/
+*.pyc
+instagram.db
+instagram.db-*
+uploads/
+.env
+.DS_Store
+frontend/.env
+backend/.env
+*.pem
+debug.log
+00.[중요] AWS 키패어/

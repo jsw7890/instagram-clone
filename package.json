@@ -1,0 +1,10 @@
+{
+  "name": "my-instagram",
+  "private": true,
+  "scripts": {
+    "setup": "node scripts/setup.js",
+    "dev": "node scripts/dev.js",
+    "start": "node scripts/dev.js",
+    "db:migrate": "node scripts/migrate.js"
+  }
+}
