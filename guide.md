@@ -104,9 +104,21 @@ flowchart LR
 - **API 클라이언트:** `frontend/src/api/*` — Axios, 401 시 로그아웃.
 - **빌드:** `frontend/npm run build` → `dist/` (운영 시 Nginx 등에 배포).
 
-### 2.5 운영 배포(참고)
+### 2.5 운영 배포
 
-AWS EC2 + Nginx + Let’s Encrypt로 HTTPS 정적 호스팅·`/api`·`/media` 역프록시 패턴을 쓸 수 있다. 상세 절차는 별도 배포 노트; API는 **8000을 공개 SG에 열지 않고** Nginx가 `127.0.0.1:8000`으로 프록시하는 구성을 권장한다.
+**인프라:** AWS EC2(`jsw00.p-e.kr`) + Nginx + Let's Encrypt. API는 8000을 공개 SG에 열지 않고 Nginx가 `127.0.0.1:8000`으로 역프록시한다. 백엔드는 systemd 서비스 `instagram-backend`(uvicorn, `backend/.venv`)로 상시 구동, 프론트는 `frontend/dist`를 Nginx가 정적 서빙(`/etc/nginx/conf.d/jsw00.conf`).
+
+**개발 프로세스 (로컬 개발 → GitHub → 운영 배포):**
+
+1. **로컬**에서 기능 개발 및 테스트(`npm run dev`, `pytest`, 수동 시나리오 §8.1)
+2. 정상 동작 확인된 코드를 로컬에서 `git push`로 GitHub(`jsw7890/instagram-clone`, `main`)에 업로드
+3. **운영 서버**에서 GitHub의 최신 코드를 받아 배포:
+   - `git pull origin main`
+   - 백엔드 의존성 변경 시: `pip install -r backend/requirements.txt` → `sudo systemctl restart instagram-backend`
+   - 프론트 변경 시: `cd frontend && npm install && npm run build` (→ `dist/` 갱신, Nginx는 재시작 불필요)
+   - DB 스키마 변경 시: `run_migrations()`가 백엔드 기동 시 자동 적용
+
+로컬은 개발·검증 전용이며, 운영 서버에 직접 코드를 작성하지 않는다. 운영 서버는 GitHub `main` 브랜치만을 배포 소스로 신뢰한다.
 
 ---
 

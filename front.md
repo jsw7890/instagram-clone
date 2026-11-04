@@ -69,21 +69,27 @@ Instagram 웹(데스크톱)을 기준으로 한다. 픽셀 퍼펙트 복제는 �
 |------|--------|------|
 | `/login` | 로그인 | 비로그인 전용 |
 | `/signup` | 회원가입 | 비로그인 전용 |
-| `/` | 홈 피드 | 필요 |
-| `/explore` | 탐색 그리드 | 필요 |
-| `/search` | 검색 결과 | 필요 |
-| `/create` | 게시 작성 (또는 모달) | 필요 |
-| `/p/:postId` | 게시물 상세 | 필요 |
+| `/` | 홈 피드 | 선택(게스트 읽기 가능) |
+| `/explore` | 탐색 그리드 | 선택 |
+| `/search` | 검색 결과 | 선택 |
+| `/p/:postId` | 게시물 상세 | 선택 |
+| `/:username` | 프로필 | 선택 |
 | `/direct` | DM 목록 | 필요 |
 | `/direct/:conversationId` | DM 스레드 | 필요 |
 | `/activity` | 알림 | 필요 |
-| `/:username` | 프로필 | 필요 |
+| `/settings` | 설정 메뉴 | 필요 |
+| `/settings/password` | 비밀번호 변경 | 필요 |
+| `/settings/privacy` | 개인정보(비공개 계정 등) | 필요 |
 | `/:username/saved` | 저장한 게시물 | 본인만 |
-| `/:username/followers` | 팔로워 모달/페이지 | 필요 |
-| `/:username/following` | 팔로잉 모달/페이지 | 필요 |
-| `*` | 404 | - |
+| `/admin/login` | 관리자 로그인 | 비로그인 전용 |
+| `/admin` | 관리자 대시보드 | 관리자만 |
+| `/admin/users` | 관리자 - 사용자 관리 | 관리자만 |
+| `/admin/posts` | 관리자 - 게시물 관리 | 관리자만 |
+| `/not-found`, `*` | 404 (`*`는 `/not-found`로 리다이렉트) | - |
 
-로그인된 사용자가 `/login`, `/signup`에 오면 `/`로 보낸다.
+게시 작성과 팔로워/팔로잉 목록은 **별도 라우트가 아니라 모달**이다(아래 §6.6, §6.8 참고).
+
+로그인된 사용자가 `/login`, `/signup`에 오면 `/`로 보낸다. 로그인 성공 시 `is_admin`이면 `/admin`으로, 아니면 원래 가려던 경로(`from`) 또는 `/`로 보낸다. `/admin/*`은 `AdminRoute`(비관리자 403/리다이렉트)로 보호되고, `AdminLayout`이 공통 레이아웃을 제공한다.
 
 ## 5. 전역 상태 (Context)
 
@@ -91,9 +97,9 @@ Instagram 웹(데스크톱)을 기준으로 한다. 픽셀 퍼펙트 복제는 �
 
 | 값 | 설명 |
 |----|------|
-| `user` | `{ id, username, full_name, avatar_url, bio }` 또는 `null` |
+| `user` | `{ id, username, full_name, avatar_url, bio }` 또는 `null` (관리자면 `is_admin: 1`) |
 | `token` | JWT 문자열 또는 `null` |
-| `login(email, password)` | 성공 시 토큰·유저 저장 |
+| `login(username, password)` | 사용자명 또는 이메일 모두 허용. 성공 시 토큰·유저 저장 |
 | `signup(payload)` | 가입 후 자동 로그인 |
 | `logout()` | 토큰 삭제, `/login` |
 | `refreshMe()` | `GET /users/me`로 프로필 동기화 |
@@ -113,15 +119,14 @@ Instagram 웹(데스크톱)을 기준으로 한다. 픽셀 퍼펙트 복제는 �
 
 ### 6.1 로그인 `/login`
 
-Instagram 로고, 이메일(또는 username), 비밀번호, 로그인 버튼, 회원가입 링크.
+Instagram 로고, 이메일(또는 username), 비밀번호, 로그인 버튼, 회원가입 링크, 관리자 로그인 링크(`/admin/login`), 로그인 없이 둘러보기 링크(`/`).
 
 - 검증: 둘 다 비어 있으면 버튼 비활성. 실패 시 `detail` 메시지 표시
-- 성공: `from` 또는 `/`로 이동
-- 데모 안내: 시드 계정 `demo / demo1234`를 하단에 작게 표시 (개발용)
+- 성공: `is_admin`이면 `/admin`, 아니면 `from` 또는 `/`로 이동
 
 ### 6.2 회원가입 `/signup`
 
-이메일, 성명, 사용자명, 비밀번호(8자 이상).
+이메일, 성명, 사용자명, 비밀번호(8자 이상), 로그인 없이 둘러보기 링크.
 
 - 사용자명은 영문·숫자·`.` `_`만, 실시간 중복은 제출 시 서버 에러로 처리
 - 성공 후 자동 로그인 → `/`
@@ -160,7 +165,7 @@ Instagram 로고, 이메일(또는 username), 비밀번호, 로그인 버튼, �
 
 ### 6.6 게시 작성
 
-데스크톱: 사이드바 “만들기” → 모달. 모바일: `/create`.
+데스크톱·모바일 공통: 사이드바/하단 탭 "만들기" → `CreatePost` 모달(별도 라우트 없음).
 
 단계:
 
@@ -179,9 +184,9 @@ Instagram 상세처럼 **왼쪽 미디어, 오른쪽 메타**(데스크톱). 좁
 
 ### 6.8 프로필 `/:username`
 
-헤더: 큰 아바타, 사용자명, 팔로우/언팔로우 또는 “프로필 편집”, 통계(게시물·팔로워·팔로잉, 클릭 시 목록), 성명, 바이오.
+헤더: 큰 아바타, 사용자명, 팔로우/언팔로우 또는 "프로필 편집", 통계(게시물·팔로워·팔로잉), 성명, 바이오. 팔로워/팔로잉 수 클릭 시 **별도 라우트가 아니라 `Modal`**(`openList("followers"|"following")`)로 목록을 띄운다.
 
-탭: 게시물 그리드 / 저장(본인만). 게시물 없음 문구: “게시물 없음”.
+탭: 게시물 그리드 / 저장(본인만, `/:username/saved`). 게시물 없음 문구: "게시물 없음".
 
 **프로필 편집 모달**: 아바타 업로드, 성명, 바이오(150자), 웹사이트. `PATCH /users/me` + 선택 시 `POST /users/me/avatar`.
 
@@ -212,6 +217,23 @@ Instagram 상세처럼 **왼쪽 미디어, 오른쪽 메타**(데스크톱). 좁
 
 읽지 않은 항목 강조. 페이지 진입 시 `POST /notifications/read`. 사이드바 하트 아이콘에 미읽음 뱃지.
 
+### 6.12 설정 `/settings`, `/settings/password`, `/settings/privacy`
+
+`SettingsPages.jsx` 한 파일에서 `SettingsHome`, `PasswordSettings`, `PrivacySettings` 세 컴포넌트를 export한다.
+
+- `/settings`: 메뉴(비밀번호 변경, 개인정보로 이동)
+- `/settings/password`: 현재 비밀번호·새 비밀번호 → `POST /auth/password`
+- `/settings/privacy`: 비공개 계정·활동 상태 토글 → `GET`/`PATCH /users/me/privacy`
+
+### 6.13 관리자 `/admin/*`
+
+일반 사용자 화면과 완전히 분리된 레이아웃(`AdminLayout`)과 보호 라우트(`AdminRoute`, 비관리자는 접근 불가)를 쓴다.
+
+- `/admin/login`: 관리자 전용 로그인 폼 → 성공 시 `/admin`
+- `/admin` (`AdminDashboard`): `GET /admin/stats` — 전체 유저·게시물·댓글·좋아요·팔로우·메시지·스토리 수, 최근 7일 가입자 수·게시물 수, 최근 가입자 목록
+- `/admin/users` (`AdminUsersPage`): `GET /admin/users` 검색·페이지네이션 목록, `DELETE /admin/users/{id}` 탈퇴 처리(관리자·본인 계정은 삭제 불가)
+- `/admin/posts` (`AdminPostsPage`): `GET /admin/posts` 검색·페이지네이션 목록, `DELETE /admin/posts/{id}` 삭제
+
 ## 7. 컴포넌트 목록
 
 ```
@@ -221,27 +243,31 @@ src/
   api/posts.js
   api/users.js
   api/stories.js
-  api/messages.js
+  api/messages.js        # conversations, openConversation, messages, sendMessage, readConversation
   api/notifications.js
+  api/admin.js           # stats, users, deleteUser, posts, deletePost
   context/AuthContext.jsx
   context/ToastContext.jsx
   components/
+    Icons.jsx
     layout/Sidebar.jsx
     layout/BottomNav.jsx
     layout/AppShell.jsx
+    layout/MobileHeader.jsx
+    layout/SiteFooter.jsx
     post/PostCard.jsx
     post/PostGrid.jsx
-    post/LikeButton.jsx
-    post/CommentList.jsx
+    post/CreatePost.jsx   # 게시 작성 모달
     story/StoryBar.jsx
     story/StoryViewer.jsx
     user/Avatar.jsx
-    user/UserListItem.jsx
     user/FollowButton.jsx
+    user/ProfileMessageButton.jsx
+    user/SuggestedUsers.jsx
+    admin/AdminLayout.jsx
     common/Modal.jsx
-    common/Spinner.jsx
-    common/Toast.jsx
     common/ProtectedRoute.jsx
+    common/AdminRoute.jsx
   pages/
     LoginPage.jsx
     SignupPage.jsx
@@ -250,10 +276,14 @@ src/
     SearchPage.jsx
     PostDetailPage.jsx
     ProfilePage.jsx
-    DirectListPage.jsx
-    DirectThreadPage.jsx
+    DirectPages.jsx        # DirectListPage, DirectThreadPage (named export)
     ActivityPage.jsx
+    SettingsPages.jsx      # SettingsHome, PasswordSettings, PrivacySettings
     NotFoundPage.jsx
+    admin/AdminLoginPage.jsx
+    admin/AdminDashboard.jsx
+    admin/AdminUsersPage.jsx
+    admin/AdminPostsPage.jsx
   utils/format.js        # 상대시간, 숫자 축약(1.2만)
   utils/media.js
   App.jsx

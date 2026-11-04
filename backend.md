@@ -22,6 +22,7 @@
 - 1:1 텍스트 DM
 - 알림 목록·읽음·**단건 삭제**
 - 검색(계정/태그/게시물)
+- 관리자(`is_admin`): 통계, 사용자·게시물 조회/삭제
 - 시드 데이터(검수용)
 
 ### 1.1 하지 않는다
@@ -156,7 +157,9 @@ SQLite 파일과 `uploads/`를 함께 백업한다. WAL 사용 시 `-wal`, `-shm
 
 ### 5.1 컬럼과 제약
 
-`users`: `email`, `username`(소문자, 각각 `COLLATE NOCASE` 유니크), `full_name`, `password_hash`, `bio`, `website`(빈 문자열 기본, NOT NULL), `avatar_url`(NULL 허용), `is_private`(기본 0), `show_activity_status`(기본 1), `created_at`, `updated_at`.
+`users`: `email`, `username`(소문자, 각각 `COLLATE NOCASE` 유니크), `full_name`, `password_hash`, `bio`, `website`(빈 문자열 기본, NOT NULL), `avatar_url`(NULL 허용), `is_private`(기본 0), `show_activity_status`(기본 1), `is_admin`(기본 0, CHECK 0/1), `created_at`, `updated_at`.
+
+`is_admin=1`인 계정은 `/admin/*` 화면·API에만 접근 권한이 생긴다. 일반 집계(통계, 유저 목록)는 관리자 계정을 **제외**하고 계산한다.
 
 `website`가 빈 문자열이면 API 응답은 `null`이어도 된다. 프론트 편집 폼은 `|| ""`로 받는다. 프로필 헤더는 website를 그리지 않고, 값은 편집 저장용이다.
 
@@ -207,7 +210,7 @@ SQLite 파일과 `uploads/`를 함께 백업한다. WAL 사용 시 `-wal`, `-shm
 
 ### 6.0 검증 요약 (프론트 ↔ 명세 ↔ DB)
 
-프론트 `src/api/*`·각 페이지가 호출하는 엔드포인트 **41개**만 유지한다. 아래 표에 없는 경로는 OpenAPI에 두지 않는다.
+프론트 `src/api/*`·각 페이지가 호출하는 엔드포인트 **46개**만 유지한다. 아래 표에 없는 경로는 OpenAPI에 두지 않는다.
 
 | # | 메서드 | 경로 | 인증 | 프론트 | 주 DB |
 |---|--------|------|------|--------|--------|
@@ -252,6 +255,13 @@ SQLite 파일과 `uploads/`를 함께 백업한다. WAL 사용 시 `-wal`, `-shm
 | 39 | GET | `/notifications` | 필수 | `notifications.listNotifications` | `notifications`, `users` (actor) |
 | 40 | POST | `/notifications/read` | 필수 | `notifications.readNotifications` | `notifications.read` |
 | 41 | DELETE | `/notifications/{id}` | 필수 | `notifications.deleteNotification` | `notifications` |
+| 42 | GET | `/admin/stats` | 관리자 | `admin.stats` | `users`, `posts`, `comments`, `likes`, `follows`, `messages`, `stories` |
+| 43 | GET | `/admin/users` | 관리자 | `admin.users` | `users`, `posts`(카운트) |
+| 44 | DELETE | `/admin/users/{id}` | 관리자 | `admin.deleteUser` | `users` (+ CASCADE), `uploads/avatars` 파일 |
+| 45 | GET | `/admin/posts` | 관리자 | `admin.posts` | `posts`, `post_images`, `likes`, `comments` |
+| 46 | DELETE | `/admin/posts/{id}` | 관리자 | `admin.deletePost` | `posts` (+ CASCADE), `uploads/posts` 파일 |
+
+관리자 인증은 일반 로그인 JWT + `get_admin_user`(`is_admin=0`이면 `403`)이다. 별도 토큰 종류는 없다.
 
 **제거·미노출 (프론트 미사용):**
 
@@ -403,6 +413,25 @@ SQLite 파일과 `uploads/`를 함께 백업한다. WAL 사용 시 `-wal`, `-shm
 
 알림 문구는 프론트가 `type`으로 조립한다. `like`/`comment`/`mention`은 `post_id` 없이 넣지 않는다. `follow`는 `post_id`를 넣지 않는다.
 
+### 6.9 관리자
+
+모두 `is_admin=1` 필요(`403` 아니면). 일반 유저·게시물 집계와 분리해, 관리자 계정 자신은 유저 목록/통계에서 제외한다.
+
+`GET /admin/stats`  
+`{ users, posts, comments, likes, follows, messages, stories, signups_last_7_days, posts_last_7_days, recent_signups: [{ id, username, email, full_name, created_at }] }` (최근 가입자 최대 8명)
+
+`GET /admin/users?q=&page=&limit=`  
+`{ items: [{ id, username, email, full_name, created_at, posts_count }], total, page, limit }`
+
+`DELETE /admin/users/{id}`  
+관리자 계정, 본인 계정은 `400`. 아바타·게시물 이미지 파일도 삭제 후 유저 행 CASCADE 삭제. `{ ok: true }`
+
+`GET /admin/posts?q=&page=&limit=`  
+`{ items: [{ id, author: { id, username }, caption, location, created_at, likes_count, comments_count, image_count, cover_url }], total, page, limit }`
+
+`DELETE /admin/posts/{id}`  
+이미지 파일 삭제 후 게시물 CASCADE 삭제. `{ ok: true }`
+
 ---
 
 ## 7. 시드 (검수)
@@ -414,12 +443,14 @@ SQLite 파일과 `uploads/`를 함께 백업한다. WAL 사용 시 `-wal`, `-shm
 | demo | demo1234 | 메인 검수 |
 | alice, bob | demo1234 | 피드·DM |
 | cara, dan | demo1234 | 탐색(demo가 안 팔로우) |
+| admin | pass123 | 관리자(`is_admin=1`), `/admin/login` |
 
 - 게시 캡션·위치·댓글은 한국어. 플레이스홀더 이미지는 최소 PNG 재사용
 - DM: demo↔alice(미읽음 1), demo↔bob
 - 알림(demo): follow는 항상. like/comment/mention은 **demo 게시물이 있을 때만** 그 `post_id`로 넣는다. 게시물이 없으면 그 세 종류는 만들지 않는다. 행 단위이며 전체 삭제 없음
+- `admin`: 기존에 `admin` username이 있으면 `is_admin=1`로 승격 + 비밀번호를 `pass123`로 재설정. 없으면 새로 생성. 멱등(idempotent)
 
-기동: `seed_if_empty` → `seed_messages_if_empty` → `seed_explore_and_activity`
+기동: `seed_if_empty` → `seed_messages_if_empty` → `seed_explore_and_activity` → `ensure_admin_user`
 
 ---
 
@@ -440,6 +471,7 @@ backend/
     routers/
       auth.py users.py posts.py comments.py
       stories.py search.py conversations.py notifications.py
+      admin.py
     utils/security.py media.py time.py
   uploads/
   requirements.txt
@@ -457,4 +489,5 @@ backend/
 - [ ] 알림 **삭제 1건**만 사라지고 나머지는 남는다 (`DELETE /notifications/{id}` 200)
 - [ ] 비밀번호 변경·비공개 계정이 SQLite에 반영된다
 - [ ] 개발·프로덕트 모두 `DATABASE_URL`이 `sqlite://` 이다
-- [ ] `/docs`에 §6.0 표의 **41개** 엔드포인트만 있다 (`GET /users/me`, `GET /stories/{id}` 없음)
+- [ ] `/docs`에 §6.0 표의 **46개** 엔드포인트만 있다 (`GET /users/me`, `GET /stories/{id}` 없음)
+- [ ] `admin` 로그인 후 `/admin/stats`, `/admin/users`, `/admin/posts`가 동작하고, 비관리자는 `403`
