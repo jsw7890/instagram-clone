@@ -48,9 +48,6 @@ export default function AdminLoginPage() {
         <button className="btn" disabled={!username || !password}>
           로그인
         </button>
-        <p className="muted" style={{ marginTop: 16 }}>
-          기본 계정: admin / pass123
-        </p>
         <Link className="link" to="/login" style={{ display: "inline-block", marginTop: 12 }}>
           일반 로그인으로
         </Link>

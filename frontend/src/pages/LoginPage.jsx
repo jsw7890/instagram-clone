@@ -37,9 +37,6 @@ export default function LoginPage() {
           로그인
         </button>
         <p className="muted" style={{ marginTop: 24 }}>
-          데모 계정 demo / demo1234
-        </p>
-        <p className="muted">
           <Link className="link" to="/admin/login">
             관리자 로그인
           </Link>
